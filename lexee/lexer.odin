@@ -1,86 +1,9 @@
 package lexee
 
 import "core:fmt"
-import "core:reflect"
 import "core:slice"
 import "core:unicode"
 import "core:strconv"
-
-Config :: struct {
-	ignore_whitespace: bool,
-
-	ident_allowed_chars: []u8,
-	ident_allow_digits: bool,
-	// ident_allow_digits_beginning: bool,
-}
-
-config_default :: proc() -> Config {
-	// cant use slice literal (gets freed before using)
-	@(static) ident_allowed_chars := []u8{'_'}
-
-	return {
-		ignore_whitespace = true,
-
-		ident_allowed_chars = ident_allowed_chars,
-		ident_allow_digits = true,
-	}
-}
-
-Error :: struct {
-	type: ErrorType,
-	span: Span,
-	info: ErrorInfo,
-}
-
-ErrorType :: enum {
-	InvalidCharacter,
-	InvalidInteger,
-	UnterminatedString,
-}
-
-ErrorInfo :: union {
-	string,
-	u8,
-}
-
-Span :: struct {
-	lo, hi: uint,
-}
-
-Token :: struct($PunctEnum, $KeywordEnum: typeid) {
-	span: Span,
-	type: TokenType,
-	value: TokenValue(PunctEnum, KeywordEnum),
-}
-
-TokenType :: enum {
-	Ident,
-	Punct,
-	Keyword,
-	
-	Whitespace,
-	Space,
-	Tab,
-	Newline,
-
-	String,
-	Integer,
-
-	EOF,
-}
-
-Distinct :: struct($T: typeid) {
-	type: T,
-}
-
-TokenValue :: union($PunctEnum, $KeywordEnum: typeid) {
-	string,
-	int,
-	uint,
-
-	Distinct(PunctEnum),
-	Distinct(KeywordEnum),
-}
 
 Lexer :: struct($PunctEnum, $KeywordEnum: typeid) {
 	span: Span,
