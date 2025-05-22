@@ -35,6 +35,7 @@ Error :: struct {
 ErrorType :: enum {
 	InvalidCharacter,
 	InvalidInteger,
+	UnterminatedString,
 }
 
 ErrorInfo :: union {
@@ -76,7 +77,7 @@ TokenValue :: union($PunctEnum, $KeywordEnum: typeid) {
 	string,
 	int,
 	uint,
-	
+
 	Distinct(PunctEnum),
 	Distinct(KeywordEnum),
 }
@@ -186,6 +187,30 @@ lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEn
 			continue main
 		}
 
+		if char == '"' {
+			eat(lexer)
+
+			terminated := false
+			for !is_end(lexer) && (peek(lexer) != '\n' || peek(lexer) != '\r') {
+				if peek(lexer) == '"' {
+					eat(lexer)
+					terminated = true
+					break
+				}
+				eat(lexer)
+			}
+
+			if !terminated {
+				error = Error{.UnterminatedString, lexer.span, nil}
+				return
+			}
+
+			str_str := string(span_input_slice(lexer, 1, -1))
+			add_token(lexer, .String, str_str)
+
+			continue main
+		}
+
 		error = Error{.InvalidCharacter, lexer.span, char}
 		return
 
@@ -202,7 +227,7 @@ is_ident_char :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), char: u8) -> bool
 	return unicode.is_alpha(rune(char)) || slice.contains(lexer.config.ident_allowed_chars, char)
 }
 
-span_input_slice :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), loc := #caller_location) -> []u8 {
+span_input_slice :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), lo_off: int = 0, hi_off: int = 0, loc := #caller_location) -> []u8 {
 	if is_end(lexer) {
 		fmt.panicf(
 			"Internal lexer error: Tried to span input slice when lexer ended (span=%v, len=%v)\nAt %v",
@@ -212,7 +237,7 @@ span_input_slice :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), loc := #caller
 		)
 	}
 
-	return lexer.input[lexer.span.lo:lexer.span.hi]
+	return lexer.input[int(lexer.span.lo)+lo_off:int(lexer.span.hi)+hi_off]
 }
 
 add_token :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), type: TokenType, value: TokenValue(PunctEnum, KeywordEnum)) {
