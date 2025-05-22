@@ -185,6 +185,7 @@ lex_string :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (cont: bool = tru
 	if char == '"' {
 		eat(lexer)
 
+		str_buf: [dynamic]u8
 		terminated := false
 		for !is_end(lexer) && (peek(lexer) != '\n' && peek(lexer) != '\r') {
 			if peek(lexer) == '"' {
@@ -192,7 +193,27 @@ lex_string :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (cont: bool = tru
 				terminated = true
 				break
 			}
-			eat(lexer)
+
+			if peek(lexer) == '\\' {
+				eat(lexer)
+				switch eat(lexer) {
+				case '\\':
+					append(&str_buf, '\\')
+					continue
+				case '"':
+					append(&str_buf, '\"')
+					continue
+				case 't':
+					append(&str_buf, '\t')
+					continue
+				case:
+					// todo: add info to error
+					err = Error{.InvalidEscape, lexer.span, nil}
+					return
+				}
+			}
+
+			append(&str_buf, eat(lexer))
 		}
 
 		if !terminated {
@@ -200,7 +221,7 @@ lex_string :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (cont: bool = tru
 			return
 		}
 
-		str_str := string(span_input_slice(lexer, 1, -1))
+		str_str := string(str_buf[:])
 		add_token(lexer, .String, str_str)
 
 		return
