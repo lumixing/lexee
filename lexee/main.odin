@@ -5,13 +5,39 @@ import "core:reflect"
 import "core:slice"
 import "core:unicode"
 
+Config :: struct {
+	ignore_whitespace: bool,
+
+	ident_allowed_chars: []u8,
+	ident_allow_digits: bool,
+	// ident_allow_digits_beginning: bool,
+}
+
+config_default :: proc() -> Config {
+	// cant use slice literal (gets freed before using)
+	@(static) ident_allowed_chars := []u8{'_'}
+
+	return {
+		ignore_whitespace = true,
+
+		ident_allowed_chars = ident_allowed_chars,
+		ident_allow_digits = true,
+	}
+}
+
 Error :: struct {
 	type: ErrorType,
 	span: Span,
+	info: ErrorInfo,
 }
 
 ErrorType :: enum {
+	InvalidCharacter,
+}
 
+ErrorInfo :: union {
+	string,
+	u8,
 }
 
 Span :: struct {
@@ -56,22 +82,31 @@ Lexer :: struct($PunctEnum, $KeywordEnum: typeid) {
 	input: []u8,
 	tokens: [dynamic]Token(PunctEnum, KeywordEnum),
 
+	config: Config,
 	punct_map: map[string]PunctEnum,
 	keyword_map: map[string]KeywordEnum,
 }
 
-lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEnum, KeywordEnum)) {
+lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEnum, KeywordEnum), error: Maybe(Error)) {
 	main: for !is_end(lexer) {
 		lexer.span.lo = lexer.span.hi
 		char := peek(lexer)
 
-		switch char {
-		case ' ':  add_token(lexer, .Space, nil)
-		case '\t': add_token(lexer, .Tab, nil)
-		case '\n': add_token(lexer, .Newline, nil)
-		case '\r':
-			eat(lexer)
-			continue
+		if lexer.config.ignore_whitespace {
+			switch char {
+			case ' ', '\t', '\n', '\r':
+				eat(lexer)
+				continue
+			}
+		} else {
+			switch char {
+			case ' ':  add_token(lexer, .Space, nil)
+			case '\t': add_token(lexer, .Tab, nil)
+			case '\n': add_token(lexer, .Newline, nil)
+			case '\r':
+				eat(lexer)
+				continue
+			}
 		}
 
 		punct_map_entries, _ := slice.map_entries(lexer.punct_map)
@@ -114,10 +149,10 @@ lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEn
 			}
 		}
 
-		if unicode.is_alpha(rune(char)) {
+		if is_ident_char(lexer, char) {
 			eat(lexer)
 
-			for !is_end(lexer) && unicode.is_alpha(rune(peek(lexer))) {
+			for !is_end(lexer) && is_ident_char(lexer, peek(lexer)) {
 				eat(lexer)
 			}
 			ident_str := string(span_input_slice(lexer))
@@ -126,12 +161,20 @@ lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEn
 			continue main
 		}
 
-		eat(lexer)
+		error = Error{.InvalidCharacter, lexer.span, char}
+		return
+
+		// eat(lexer)
 	}
 
 	add_token(lexer, .EOF, nil)
 
-	return lexer.tokens[:]
+	tokens = lexer.tokens[:]
+	return
+}
+
+is_ident_char :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), char: u8) -> bool {
+	return unicode.is_alpha(rune(char)) || slice.contains(lexer.config.ident_allowed_chars, char)
 }
 
 span_input_slice :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), loc := #caller_location) -> []u8 {
