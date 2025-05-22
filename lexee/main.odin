@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:reflect"
 import "core:slice"
 import "core:unicode"
+import "core:strconv"
 
 Config :: struct {
 	ignore_whitespace: bool,
@@ -33,6 +34,7 @@ Error :: struct {
 
 ErrorType :: enum {
 	InvalidCharacter,
+	InvalidInteger,
 }
 
 ErrorInfo :: union {
@@ -73,6 +75,8 @@ Distinct :: struct($T: typeid) {
 TokenValue :: union($PunctEnum, $KeywordEnum: typeid) {
 	string,
 	int,
+	uint,
+	
 	Distinct(PunctEnum),
 	Distinct(KeywordEnum),
 }
@@ -155,8 +159,29 @@ lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEn
 			for !is_end(lexer) && is_ident_char(lexer, peek(lexer)) {
 				eat(lexer)
 			}
+
 			ident_str := string(span_input_slice(lexer))
 			add_token(lexer, .Ident, ident_str)
+
+			continue main
+		}
+
+		if unicode.is_digit(rune(char)) {
+			eat(lexer)
+
+			for !is_end(lexer) && unicode.is_digit(rune(peek(lexer))) {
+				eat(lexer)
+			}
+
+			int_str := string(span_input_slice(lexer))
+			int_parsed, ok := strconv.parse_uint(int_str)
+
+			if !ok {
+				error = Error{.InvalidInteger, lexer.span, int_str}
+				return
+			}
+
+			add_token(lexer, .Integer, int_parsed)
 
 			continue main
 		}
