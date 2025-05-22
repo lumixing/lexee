@@ -1,7 +1,15 @@
 package lexee
 
+WhitespaceConfig :: enum {
+	Ignore,
+	Seperate,
+	OnlyWhitespace,
+	OnlyNewline,
+	OnlyNewlineWhitespace,
+}
+
 Config :: struct {
-	ignore_whitespace: bool,
+	whitespace: WhitespaceConfig,
 
 	ident_allowed_chars: []u8,
 	ident_allow_digits: bool,
@@ -13,7 +21,7 @@ config_default :: proc() -> Config {
 	@(static) ident_allowed_chars := []u8{'_'}
 
 	return {
-		ignore_whitespace = true,
+		whitespace = .OnlyNewline,
 
 		ident_allowed_chars = ident_allowed_chars,
 		ident_allow_digits = true,
