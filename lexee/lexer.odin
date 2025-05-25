@@ -5,6 +5,9 @@ import "core:slice"
 import "core:unicode"
 import "core:strconv"
 
+// compiler doesnt like this since its circular :(
+// LexProc :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (cont: bool = true)
+
 Lexer :: struct($PunctEnum, $KeywordEnum: typeid) {
 	span: Span,
 	input: []u8,
@@ -13,6 +16,8 @@ Lexer :: struct($PunctEnum, $KeywordEnum: typeid) {
 	config: Config,
 	punct_map: map[string]PunctEnum,
 	keyword_map: map[string]KeywordEnum,
+
+	lex_procs: [dynamic]proc(lexer: ^Lexer(PunctEnum, KeywordEnum)) -> (cont: bool = true, err: Maybe(Error)),
 }
 
 lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEnum, KeywordEnum), err: Maybe(Error)) {
@@ -39,6 +44,16 @@ lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEn
 			return
 		} else if str_cont {
 			continue
+		}
+
+		for lex_proc in lexer.lex_procs {
+			proc_cont, proc_err := lex_proc(lexer)
+			if proc_err, ok := proc_err.?; ok {
+				err = proc_err
+				return
+			} else if proc_cont {
+				continue main
+			}
 		}
 
 		err = Error{.InvalidCharacter, lexer.span, char}
