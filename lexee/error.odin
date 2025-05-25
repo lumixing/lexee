@@ -13,6 +13,8 @@ ErrorType :: enum {
 	InvalidInteger,
 	UnterminatedString,
 	InvalidEscape,
+
+	LexProcError,
 }
 
 ErrorInfo :: union {
@@ -43,4 +45,8 @@ span_to_line_col :: proc(input: []u8, span: Span) -> (line, col: uint) {
 	}
 
 	return
+}
+
+lex_proc_err :: proc(span: Span, info: ErrorInfo) -> Error {
+	return Error{.LexProcError, span, info}
 }
