@@ -17,6 +17,8 @@ Lexer :: struct($PunctEnum, $KeywordEnum: typeid) {
 	punct_map: map[string]PunctEnum,
 	keyword_map: map[string]KeywordEnum,
 
+	single_line_comment_prefix: []string,
+
 	lex_procs: [dynamic]proc(lexer: ^Lexer(PunctEnum, KeywordEnum)) -> (cont: bool = true, err: Maybe(Error)),
 }
 
@@ -45,6 +47,8 @@ lex :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (tokens: []Token(PunctEn
 		} else if str_cont {
 			continue
 		}
+
+		if lex_single_line_comment(lexer) do continue
 
 		for lex_proc in lexer.lex_procs {
 			proc_cont, proc_err := lex_proc(lexer)
@@ -245,15 +249,54 @@ lex_string :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (cont: bool = tru
 	return false, nil
 }
 
+lex_single_line_comment :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> (cont: bool = true) {
+	char := peek(lexer)
+
+	slice.sort_by(lexer.single_line_comment_prefix, proc(i, j: string) -> bool {
+		return len(i) > len(j)
+	})
+
+	for s_comm_prefix in lexer.single_line_comment_prefix {
+		if lexer.span.hi + len(s_comm_prefix) - 1 >= len(lexer.input) {
+			continue
+		}
+
+		if s_comm_prefix == string(lexer.input)[lexer.span.hi:][:len(s_comm_prefix)] {
+			lexer.span.hi += len(s_comm_prefix)
+
+			for !is_end(lexer) && peek(lexer) != '\n' {
+				eat(lexer)
+			}
+
+			if !is_end(lexer) {
+				after_char := eat(lexer)
+				assert(after_char == '\n', "expected newline at end of single-line comment") // eat newline
+			}
+
+			if !lexer.config.ignore_comments {
+				// fixme: cuts last char of an eof comment, fix hi_off
+				comment_lexeme := string(span_input_slice(lexer, len(s_comm_prefix), -1))
+				add_token(lexer, .Comment, comment_lexeme)
+			}
+
+			return
+		}
+	}
+
+	return false
+}
+
 is_ident_char :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), char: u8) -> bool {
 	return unicode.is_alpha(rune(char)) || slice.contains(lexer.config.ident_allowed_chars, char)
 }
 
 span_input_slice :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), lo_off: int = 0, hi_off: int = 0, loc := #caller_location) -> []u8 {
-	if is_end(lexer) {
+	span := Span{uint(int(lexer.span.lo)+lo_off), uint(int(lexer.span.hi)+hi_off)}
+	if is_end(lexer, span) {
 		fmt.panicf(
-			"Internal lexer error: Tried to span input slice when lexer ended (span=%v, len=%v)\nAt %v",
-			lexer.span,
+			"Internal lexer error: Tried to span input slice when lexer ended (span=%v, slice=[%v:%v], len=%v)\nAt %v",
+			span,
+			lo_off, hi_off,
 			len(lexer.input),
 			loc,
 		)
@@ -293,6 +336,10 @@ peek :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), loc := #caller_location) -
 	return lexer.input[lexer.span.hi]
 }
 
-is_end :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum)) -> bool {
-	return lexer.span.hi >= len(lexer.input)
+is_end :: proc(lexer: ^Lexer($PunctEnum, $KeywordEnum), span: Maybe(Span) = nil) -> bool {
+	if span, ok := span.?; ok {
+		return span.hi >= len(lexer.input)
+	} else {
+		return lexer.span.hi >= len(lexer.input)
+	}
 }

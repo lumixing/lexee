@@ -23,6 +23,8 @@ TokenType :: enum {
 	String,
 	Integer,
 
+	Comment,
+
 	EOF,
 }
 
